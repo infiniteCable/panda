@@ -185,9 +185,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
         pcm_cruise_check(cruise_engaged);
       }
 
-      if (!acc_main_on) {
-        controls_allowed = false;
-      }
+      mads_acc_main_check(acc_main_on);
     }
 
     // update cruise buttons
