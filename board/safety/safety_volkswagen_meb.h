@@ -198,6 +198,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
         bool resume_button = GET_BIT(to_push, 19U);
         if ((volkswagen_set_button_prev && !set_button) || (volkswagen_resume_button_prev && !resume_button)) {
           controls_allowed = acc_main_on;
+          controls_allowed_long = acc_main_on;
         }
         volkswagen_set_button_prev = set_button;
         volkswagen_resume_button_prev = resume_button;
@@ -205,7 +206,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
       // Always exit controls on rising edge of Cancel
       // Signal: GRA_ACC_01.GRA_Abbrechen
       if (GET_BIT(to_push, 13U)) {
-        controls_allowed = false;
+        controls_allowed_long = false;
       }
     }
 
@@ -277,9 +278,19 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
 
   // FORCE CANCEL: ensuring that only the cancel button press is sent when controls are off.
   // This avoids unintended engagements while still allowing resume spam
-  if ((addr == MSG_GRA_ACC_01) && !controls_allowed) {
+  if (addr == MSG_GRA_ACC_01) {
     // disallow resume and set: bits 16 and 19
-    if ((GET_BYTE(to_send, 2) & 0x9U) != 0U) {
+    /*if ((GET_BYTE(to_send, 2) & 0x9U) != 0U) {
+      tx = 0;
+    }*/
+    bool is_set_cruise = GET_BIT(to_send, 16U) != 0U;
+    bool is_resume_cruise = GET_BIT(to_send, 19U) != 0U;
+    bool is_accel_cruise = GET_BIT(to_send, 17U) != 0U;
+    bool is_decel_cruise = GET_BIT(to_send, 18U) != 0U;
+    bool is_cancel = GET_BIT(to_send, 13U) != 0U;
+
+    bool allowed = (is_cancel && cruise_engaged_prev) || ((is_set_cruise || is_resume_cruise || is_accel_cruise || is_decel_cruise) && controls_allowed && controls_allowed_long);
+    if (!allowed) {
       tx = false;
     }
   }
