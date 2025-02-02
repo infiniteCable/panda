@@ -37,61 +37,6 @@ static bool vw_meb_longitudinal_accel_checks(int desired_accel, const Longitudin
   return !(accel_valid || accel_inactive || accel_valid_override);
 }
 
-static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power, int steer_power_prev) {
-  // ISO 26262: Ensure that steering power does not suddenly change when control is lost
-  if (steer_control_enabled && steer_power != 0) {        
-    if (steer_power < steer_power_prev) {
-      return true;  // Allow TX only if steer power is reducing
-    }
-  }
-
-  // Additional check: If steer_req is disabled but steer power is not 0, block TX
-  if (!steer_control_enabled && steer_power != 0) {
-    return false; // TX should be blocked
-  }
-
-  return true;  // Otherwise, TX is allowed
-}
-
-static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev) {
-  bool violation = false;
-
-  if (controls_allowed && steer_control_enabled) {
-    // ISO 26262: Ensure that commanded steering angle changes comply with rate limits
-    // The rate limits prevent excessive rapid changes in curvature that could destabilize the vehicle
-    int delta_angle_up = (interpolate(limits.angle_rate_up_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
-    int delta_angle_down = (interpolate(limits.angle_rate_down_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
-
-    int highest_desired_angle = desired_angle_last + ((desired_angle_last > 0) ? delta_angle_up : delta_angle_down);
-    int lowest_desired_angle = desired_angle_last - ((desired_angle_last >= 0) ? delta_angle_down : delta_angle_up);
-
-    // ISO 21448 (SOTIF): Implement a tolerance window to account for mechanical lag in the steering system
-    // This prevents unnecessary intervention due to natural delays in steering actuation
-    int tolerated_deviation = MAX(vehicle_speed.min / 10, 5);  // Allowable difference in CAN units
-    if (abs(desired_angle - angle_meas.min) > tolerated_deviation || abs(desired_angle - angle_meas.max) > tolerated_deviation) {
-      violation |= vw_meb_max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
-    }
-
-    // ISO 26262 ASIL Consideration: Introduce a time-based failure detection mechanism
-    // Instead of immediately blocking steering, allow a time window for adjustments before intervention
-    if (violation) {
-      if (get_ts_elapsed(ts, ts_torque_check_last) > 500) {  // 500ms tolerance before blocking
-        violation = true;  // Steering command is blocked only after prolonged deviation
-      } else {
-        violation = false;  // Temporary deviation is allowed to avoid false positives
-      }
-    }
-  }
-
-  // Additional Safety Check: If controls are NOT allowed, check if steer power monitoring should be enabled
-  if (!controls_allowed) {
-    violation |= !vw_meb_steer_power_check(steer_control_enabled, steer_power, steer_power_prev);
-  }
-
-  desired_angle_last = desired_angle;
-  return violation;
-}
-
 static uint32_t volkswagen_meb_get_checksum(const CANPacket_t *to_push) {
   return (uint8_t)GET_BYTE(to_push, 0);
 }
@@ -303,7 +248,21 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
     bool steer_req = GET_BIT(to_send, 14U);
     int steer_power = (GET_BYTE(to_send, 2U) >> 0) & 0x7FU;
 
-    tx = !vw_meb_steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS, steer_power, steer_power_prev);
+    if (steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+      tx = false;
+
+      // steer power is still allowed to decrease to zero monotonously
+      // while controls are not allowed anymore
+      if (steer_req && steer_power != 0) {        
+        if (steer_power < volkswagen_steer_power_prev) {
+          tx = true;
+        }
+      }
+    }
+
+    if (!steer_req && steer_power != 0) {
+      tx = false; // steer power is not 0 when disabled
+    }
 
     volkswagen_steer_power_prev = steer_power;
   }
