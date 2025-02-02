@@ -20,6 +20,8 @@
 
 static uint8_t volkswagen_crc8_lut_8h2f[256]; // Static lookup table for CRC8 poly 0x2F, aka 8H2F/AUTOSAR
 static int volkswagen_steer_power_prev = 0;
+static uint32_t volkswagen_ts_steering_last = microsecond_timer_get();  // Last timestamp for steering checks
+
 
 static bool vw_meb_get_longitudinal_allowed_override(void) {
   return controls_allowed && gas_pressed_prev;
@@ -30,7 +32,7 @@ static bool vw_meb_max_limit_check(int val, const int MAX_VAL, const int MIN_VAL
 }
 
 // interp function that holds extreme values
-float vw_meb_interpolate(struct lookup_t xy, float x) { // THIS FUNCTION IS A STATIC IN SAFETY.H -> keep it here as reminder
+static float vw_meb_interpolate(struct lookup_t xy, float x) { // THIS FUNCTION IS A STATIC IN SAFETY.H -> keep it here as reminder
 
   int size = sizeof(xy.x) / sizeof(xy.x[0]);
   float ret = xy.y[size - 1];  // default output is last point
@@ -81,7 +83,7 @@ static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power
   return true;  // Otherwise, TX is allowed
 }
 
-static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev) {
+static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev, int steering_error_time) {
   bool violation = false;
 
   if (controls_allowed && steer_control_enabled) {
@@ -102,12 +104,18 @@ static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_
 
     // ISO 26262 ASIL Consideration: Introduce a time-based failure detection mechanism
     // Instead of immediately blocking steering, allow a time window for adjustments before intervention
-    if (violation) {
-      if (get_ts_elapsed(ts, ts_torque_check_last) > 500) {  // 500ms tolerance before blocking
-        violation = true;  // Steering command is blocked only after prolonged deviation
-      } else {
-        violation = false;  // Temporary deviation is allowed to avoid false positives
-      }
+    uint32_t ts = microsecond_timer_get();
+    uint32_t elapsed_time = get_ts_elapsed(ts, volkswagen_ts_steering_last);
+
+    if (!violation) {
+      volkswagen_ts_steering_last = ts; // reset timer if no persisting error
+    }
+
+    // tx = false when error for > steering_error_time in ms
+    if (violation && elapsed_time > steering_error_time) {
+      violation = true;
+    } else {
+      violation = false; // temporary error allowed
     }
   }
 
@@ -314,7 +322,8 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
     .inactive_accel = 3010,  // VW sends one increment above the max range when inactive
   };
 
-  const int volkswagen_accel_override = 0;
+  const int volkswagen_accel_override = 0; // m/s2
+  const int volkswagen_steering_error_time = 500; // ms
   
   int addr = GET_ADDR(to_send);
   bool tx = true;
@@ -331,7 +340,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
     bool steer_req = GET_BIT(to_send, 14U);
     int steer_power = (GET_BYTE(to_send, 2U) >> 0) & 0x7FU;
 
-    if (vw_meb_steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS, steer_power, steer_power_prev)) {
+    if (vw_meb_steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS, steer_power, steer_power_prev, volkswagen_steering_error_time)) {
       tx = false;
     }
 
