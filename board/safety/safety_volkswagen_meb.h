@@ -83,7 +83,7 @@ static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power
   return true;  // Otherwise, TX is allowed
 }
 
-static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev, uint32_t steering_error_time) {
+static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev, int steering_error_time) {
   bool violation = false;
 
   if (controls_allowed && steer_control_enabled) {
