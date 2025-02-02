@@ -67,10 +67,6 @@ static bool vw_meb_longitudinal_accel_checks(int desired_accel, const Longitudin
   return !(accel_valid || accel_inactive || accel_valid_override);
 }
 
-static void vw_meb_init_steering_timer() {
-  volkswagen_ts_steering_last = microsecond_timer_get(); // Initialize at runtime
-}
-
 static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power, int steer_power_prev) {
   // ISO 26262: Ensure that steering power does not suddenly change when control is lost
   if (steer_control_enabled && steer_power != 0) {        
@@ -209,7 +205,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   volkswagen_set_button_prev = false;
   volkswagen_resume_button_prev = false;
   volkswagen_steer_power_prev = 0;
-  vw_meb_init_steering_timer();
+  volkswagen_ts_steering_last = microsecond_timer_get();
 
 #ifdef ALLOW_DEBUG
   volkswagen_longitudinal = GET_FLAG(param, FLAG_VOLKSWAGEN_LONG_CONTROL);
