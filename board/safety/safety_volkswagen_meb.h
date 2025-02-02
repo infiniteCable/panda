@@ -83,7 +83,7 @@ static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power
   return true;  // Otherwise, TX is allowed
 }
 
-static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev, uint32_t steering_error_time) {
+static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev, uint32_t steering_error_time, int steering_tolerance) {
   bool violation = false;
 
   if (controls_allowed && steer_control_enabled) {
@@ -97,7 +97,8 @@ static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_
 
     // ISO 21448 (SOTIF): Implement a tolerance window to account for mechanical lag in the steering system
     // This prevents unnecessary intervention due to natural delays in steering actuation
-    int tolerated_deviation = MAX(vehicle_speed.min / 10, 5);  // Allowable difference in CAN units
+    int tolerated_deviation = (int)((highest_desired_angle - lowest_desired_angle) * (steering_tolerance / 100));
+    // Ensure the desired angle remains within the tolerance window
     if (ABS(desired_angle - angle_meas.min) > tolerated_deviation || ABS(desired_angle - angle_meas.max) > tolerated_deviation) {
       violation |= vw_meb_max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
     }
@@ -325,6 +326,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
 
   const int volkswagen_accel_override = 0; // m/s2
   const uint32_t volkswagen_steering_error_time = 500; // ms
+  const int volkswagen_steering_tolerance = 5;  // steering tolerance in percent
   
   int addr = GET_ADDR(to_send);
   bool tx = true;
@@ -341,7 +343,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
     bool steer_req = GET_BIT(to_send, 14U);
     int steer_power = (GET_BYTE(to_send, 2U) >> 0) & 0x7FU;
 
-    if (vw_meb_steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS, steer_power, volkswagen_steer_power_prev, volkswagen_steering_error_time)) {
+    if (vw_meb_steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS, steer_power, volkswagen_steer_power_prev, volkswagen_steering_error_time, volkswagen_steering_tolerance)) {
       tx = false;
     }
 
