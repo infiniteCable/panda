@@ -324,7 +324,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *to_send) {
   };
 
   const int volkswagen_accel_override = 0; // m/s2
-  const int volkswagen_steering_error_time = 500; // ms
+  const uint32_t volkswagen_steering_error_time = 500; // ms
   
   int addr = GET_ADDR(to_send);
   bool tx = true;
