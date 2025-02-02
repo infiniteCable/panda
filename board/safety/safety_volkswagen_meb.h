@@ -25,36 +25,8 @@ static bool vw_meb_get_longitudinal_allowed_override(void) {
   return controls_allowed && gas_pressed_prev;
 }
 
-static bool vw_meb_max_limit_check(int val, const int MAX_VAL, const int MIN_VAL) { // THIS FUNCTION IS A STATIC IN SAFETY.H -> keep it here as reminder
+static bool vw_meb_max_limit_check(int val, const int MAX_VAL, const int MIN_VAL) {
   return (val > MAX_VAL) || (val < MIN_VAL);
-}
-
-// interp function that holds extreme values
-float vw_meb_interpolate(struct lookup_t xy, float x) { // THIS FUNCTION IS A STATIC IN SAFETY.H -> keep it here as reminder
-
-  int size = sizeof(xy.x) / sizeof(xy.x[0]);
-  float ret = xy.y[size - 1];  // default output is last point
-
-  // x is lower than the first point in the x array. Return the first point
-  if (x <= xy.x[0]) {
-    ret = xy.y[0];
-
-  } else {
-    // find the index such that (xy.x[i] <= x < xy.x[i+1]) and linearly interp
-    for (int i=0; i < (size - 1); i++) {
-      if (x < xy.x[i+1]) {
-        float x0 = xy.x[i];
-        float y0 = xy.y[i];
-        float dx = xy.x[i+1] - x0;
-        float dy = xy.y[i+1] - y0;
-        // dx should not be zero as xy.x is supposed to be monotonic
-        dx = MAX(dx, 0.0001);
-        ret = (dy * (x - x0) / dx) + y0;
-        break;
-      }
-    }
-  }
-  return ret;
 }
 
 // Safety checks for longitudinal actuation
@@ -87,8 +59,8 @@ static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_
   if (controls_allowed && steer_control_enabled) {
     // ISO 26262: Ensure that commanded steering angle changes comply with rate limits
     // The rate limits prevent excessive rapid changes in curvature that could destabilize the vehicle
-    int delta_angle_up = (vw_meb_interpolate(limits.angle_rate_up_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
-    int delta_angle_down = (vw_meb_interpolate(limits.angle_rate_down_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
+    int delta_angle_up = (interpolate(limits.angle_rate_up_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
+    int delta_angle_down = (interpolate(limits.angle_rate_down_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
 
     int highest_desired_angle = desired_angle_last + ((desired_angle_last > 0) ? delta_angle_up : delta_angle_down);
     int lowest_desired_angle = desired_angle_last - ((desired_angle_last >= 0) ? delta_angle_down : delta_angle_up);
@@ -96,7 +68,7 @@ static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_
     // ISO 21448 (SOTIF): Implement a tolerance window to account for mechanical lag in the steering system
     // This prevents unnecessary intervention due to natural delays in steering actuation
     int tolerated_deviation = MAX(vehicle_speed.min / 10, 5);  // Allowable difference in CAN units
-    if (ABS(desired_angle - angle_meas.min) > tolerated_deviation || ABS(desired_angle - angle_meas.max) > tolerated_deviation) {
+    if (abs(desired_angle - angle_meas.min) > tolerated_deviation || abs(desired_angle - angle_meas.max) > tolerated_deviation) {
       violation |= vw_meb_max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
     }
 
