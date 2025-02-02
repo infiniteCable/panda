@@ -20,7 +20,7 @@
 
 static uint8_t volkswagen_crc8_lut_8h2f[256]; // Static lookup table for CRC8 poly 0x2F, aka 8H2F/AUTOSAR
 static int volkswagen_steer_power_prev = 0;
-static uint32_t volkswagen_ts_steering_last;  // Last timestamp for steering checks
+static uint32_t volkswagen_ts_steering_last = microsecond_timer_get();  // Last timestamp for steering checks
 
 
 static bool vw_meb_get_longitudinal_allowed_override(void) {
@@ -65,10 +65,6 @@ static bool vw_meb_longitudinal_accel_checks(int desired_accel, const Longitudin
   bool accel_valid_override = vw_meb_get_longitudinal_allowed_override() && desired_accel == override_accel;
   bool accel_inactive = desired_accel == limits.inactive_accel;
   return !(accel_valid || accel_inactive || accel_valid_override);
-}
-
-static void vw_meb_init_steering_timer() {
-  volkswagen_ts_steering_last = microsecond_timer_get(); // Initialize at runtime
 }
 
 static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power, int steer_power_prev) {
@@ -209,7 +205,6 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   volkswagen_set_button_prev = false;
   volkswagen_resume_button_prev = false;
   volkswagen_steer_power_prev = 0;
-  vw_meb_init_steering_timer();
 
 #ifdef ALLOW_DEBUG
   volkswagen_longitudinal = GET_FLAG(param, FLAG_VOLKSWAGEN_LONG_CONTROL);
