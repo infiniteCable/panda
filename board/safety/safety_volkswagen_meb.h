@@ -83,49 +83,67 @@ static bool vw_meb_steer_power_check(bool steer_control_enabled, int steer_power
   return true;  // Otherwise, TX is allowed
 }
 
-static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, int steer_power, int steer_power_prev, uint32_t steering_error_time, int steering_tolerance) {
+static bool vw_meb_steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const SteeringLimits limits, 
+                                          int steer_power, int steer_power_prev, uint32_t steering_error_time, int steering_tolerance) {
   bool violation = false;
 
   if (controls_allowed && steer_control_enabled) {
-    // ISO 26262: Ensure that commanded steering angle changes comply with rate limits
-    // The rate limits prevent excessive rapid changes in curvature that could destabilize the vehicle
-    int delta_angle_up = (vw_meb_interpolate(limits.angle_rate_up_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
-    int delta_angle_down = (vw_meb_interpolate(limits.angle_rate_down_lookup, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.) * limits.angle_deg_to_can) + 1.;
+    // Compute allowed rate of change for desired curvature (ISO 26262: Ensure safe transition rates)
+    int delta_angle_up = (vw_meb_interpolate(limits.angle_rate_up_lookup, vehicle_speed.min / VEHICLE_SPEED_FACTOR) * limits.angle_deg_to_can) + 1.;
+    int delta_angle_down = (vw_meb_interpolate(limits.angle_rate_down_lookup, vehicle_speed.min / VEHICLE_SPEED_FACTOR) * limits.angle_deg_to_can) + 1.;
 
     int highest_desired_angle = desired_angle_last + ((desired_angle_last > 0) ? delta_angle_up : delta_angle_down);
     int lowest_desired_angle = desired_angle_last - ((desired_angle_last >= 0) ? delta_angle_down : delta_angle_up);
 
-    // ISO 21448 (SOTIF): Implement a tolerance window to account for mechanical lag in the steering system
-    // This prevents unnecessary intervention due to natural delays in steering actuation
-    int tolerated_deviation = (int)((highest_desired_angle - lowest_desired_angle) * (steering_tolerance / 100));
-    // Ensure the desired angle remains within the tolerance window
-    if (ABS(desired_angle - angle_meas.min) > tolerated_deviation || ABS(desired_angle - angle_meas.max) > tolerated_deviation) {
-      violation |= vw_meb_max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
+    // Compute rate of change for desired and actual steering angles
+    // ISO 21448 (SOTIF): Ensuring safe behavior considering mechanical delays
+    float curvature_rate_desired = desired_angle - desired_angle_last;
+    float curvature_rate_measured = angle_meas.values[0] - angle_meas.values[1];
+
+    // Apply percentage-based tolerance window on rate of change
+    float tolerated_rate_deviation = ABS(curvature_rate_desired) * (steering_tolerance / 100.0);
+
+    // If the desired curvature change deviates too much from the actual curvature change, set violation
+    if (ABS(curvature_rate_desired - curvature_rate_measured) > tolerated_rate_deviation) {
+      violation = true;
     }
 
-    // ISO 26262 ASIL Consideration: Introduce a time-based failure detection mechanism
-    // Instead of immediately blocking steering, allow a time window for adjustments before intervention
+    // Enforce maximum steering angle limits (ISO 26262: Functional Safety)
+    violation |= vw_meb_max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
+
+    // Time-based failure detection (ISO 26262 ASIL: Prevent persistent unsafe conditions)
     uint32_t ts = microsecond_timer_get();
-    uint32_t elapsed_time = get_ts_elapsed(ts, volkswagen_ts_steering_last);
 
     if (!violation) {
-      volkswagen_ts_steering_last = ts; // reset timer if no persisting error
+      volkswagen_ts_steering_last = ts; // Reset timer if no persistent error
     }
 
-    // tx = false when error for > steering_error_time in ms
-    if (violation && elapsed_time > steering_error_time) {
-      violation = true;
+    // Block transmission (tx = false) if violation persists beyond `steering_error_time`
+    if (violation && get_ts_elapsed(ts, volkswagen_ts_steering_last) > steering_error_time) {
+      violation = true; // Permanent violation after timeout
     } else {
-      violation = false; // temporary error allowed
+      violation = false; // Temporary deviations allowed to prevent false positives
     }
   }
 
-  // Additional Safety Check: If controls are NOT allowed, check if steer power monitoring should be enabled
+  // Ensure steering angle is either zero or within measured range when steering is disabled
+  // ISO 26262: Prevent unintended steering actions when assist is inactive
+  if (!steer_control_enabled) {
+    violation |= (limits.inactive_angle_is_zero ? (desired_angle != 0) :
+                  vw_meb_max_limit_check(desired_angle, angle_meas.max + 1, angle_meas.min - 1));
+  }
+
+  // No steering commands allowed when controls are disabled
+  // ISO 26262: Functional Safety - Prevents unintended system activation
+  violation |= !controls_allowed && steer_control_enabled;
+
+  // Additional safety check: Monitor steer power when controls are disabled
   if (!controls_allowed) {
     violation |= !vw_meb_steer_power_check(steer_control_enabled, steer_power, steer_power_prev);
   }
 
   desired_angle_last = desired_angle;
+  
   return violation;
 }
 
@@ -134,7 +152,7 @@ static uint32_t volkswagen_meb_get_checksum(const CANPacket_t *to_push) {
 }
 
 static uint8_t volkswagen_meb_get_counter(const CANPacket_t *to_push) {
-  // MQB message counters are consistently found at LSB 8.
+  // MEB message counters are consistently found at LSB 8.
   return (uint8_t)GET_BYTE(to_push, 1) & 0xFU;
 }
 
