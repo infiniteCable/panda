@@ -151,7 +151,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
 
       vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
 
-      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 75 / 3.6);
+      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 75 / 36000);
     }
 
     // Update vehicle yaw rate for curvature checks
