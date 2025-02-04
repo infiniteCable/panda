@@ -125,8 +125,13 @@ static safety_config volkswagen_meb_init(uint16_t param) {
 
 // lateral limits for curvature
 static const SteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_steer = 29105, // ~ 0.195 rad/m
-  .angle_deg_to_can = 149253.7313, // ~ 1 / 0.00036 rad/m to can
+  // FOLLOWING WERE USED WHEN CALCULATING CURVATURE FROM YAW RATE AND SPEED
+  // PROBLEM HERE IS A CORRECT CONVERSION ANGLE_DEG_TO_CAN WITHOUT ROUNDING PROBLEMS -> false blocks, adapt this further
+  //.max_steer = 29105, // ~ 0.195 rad/m
+  //.angle_deg_to_can = 149253.7313, // ~ 1 / 0.00036 rad/m to can
+  // WE HAVE FOUND A SIGNAL THAT REPRESENTS THE ACTUAL CURVATURE IN MSG_MEB_EPS_01 -> TESTING
+  .max_steer = 0.195, // 0.195 rad/m
+  .angle_deg_to_can = 1, // 1 / 1 rad/m to can
   .angle_rate_up_lookup = {
     {5., 25., 25.},
     {0.0015, 0.00015, 0.00015} // in rad
@@ -143,28 +148,39 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
     int addr = GET_ADDR(to_push);
 
     // Update in-motion state by sampling wheel speeds
-    if (addr == MSG_MEB_ESP_01) {
-      uint32_t fr = GET_BYTE(to_push, 10U) | GET_BYTE(to_push, 11U) << 8;
-      uint32_t rr = GET_BYTE(to_push, 14U) | GET_BYTE(to_push, 15U) << 8;
-      uint32_t rl = GET_BYTE(to_push, 12U) | GET_BYTE(to_push, 13U) << 8;
-      uint32_t fl = GET_BYTE(to_push, 8U) | GET_BYTE(to_push, 9U) << 8;
+    //if (addr == MSG_MEB_ESP_01) {
+    //  uint32_t fr = GET_BYTE(to_push, 10U) | GET_BYTE(to_push, 11U) << 8;
+    //  uint32_t rr = GET_BYTE(to_push, 14U) | GET_BYTE(to_push, 15U) << 8;
+    //  uint32_t rl = GET_BYTE(to_push, 12U) | GET_BYTE(to_push, 13U) << 8;
+    //  uint32_t fl = GET_BYTE(to_push, 8U) | GET_BYTE(to_push, 9U) << 8;
 
-      vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
+    //  vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
 
-      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 0.0075 / 3.6);
-    }
+    //  UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 0.0075 / 3.6);
+    //}
 
     // Update vehicle yaw rate for curvature checks
-    if (addr == MSG_MEB_ESP_04) {
-      float volkswagen_yaw_rate = (GET_BYTE(to_push, 5U) | ((GET_BYTE(to_push, 6U) & 0x3F) << 8 )) * 0.01;
+    //if (addr == MSG_MEB_ESP_04) {
+    //  float volkswagen_yaw_rate = (GET_BYTE(to_push, 5U) | ((GET_BYTE(to_push, 6U) & 0x3F) << 8 )) * 0.01;
 
-      bool volkswagen_yaw_rate_sign = GET_BIT(to_push, 54U);
-      if (volkswagen_yaw_rate_sign) {
-        volkswagen_yaw_rate *= -1;
-      }
+    //  bool volkswagen_yaw_rate_sign = GET_BIT(to_push, 54U);
+    //  if (volkswagen_yaw_rate_sign) {
+    //    volkswagen_yaw_rate *= -1;
+    //  }
+    //  
+    //  float current_curvature = volkswagen_yaw_rate / MAX(vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR, 0.1);
+    //  // convert current curvature into units on CAN for comparison with desired curvature
+    //  update_sample(&angle_meas, ROUND(current_curvature * VOLKSWAGEN_MEB_STEERING_LIMITS.angle_deg_to_can));
+    //}
+
+    if (addr == MSG_MEB_EPS_01) {
+      int current_curvature = (GET_BYTE(to_push, 5U) & 0x7F) << 8 | GET_BYTE(to_push, 4U);
       
-      float current_curvature = volkswagen_yaw_rate / MAX(vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR, 0.1);
-      // convert current curvature into units on CAN for comparison with desired curvature
+      bool current_curvature_sign = GET_BIT(to_push, 55U);
+      if (current_curvature_sign) {
+        current_curvature *= -1;
+      }
+
       update_sample(&angle_meas, ROUND(current_curvature * VOLKSWAGEN_MEB_STEERING_LIMITS.angle_deg_to_can));
     }
 
