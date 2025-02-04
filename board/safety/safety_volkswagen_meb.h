@@ -148,16 +148,16 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
     int addr = GET_ADDR(to_push);
 
     // Update in-motion state by sampling wheel speeds
-    //if (addr == MSG_MEB_ESP_01) {
-    //  uint32_t fr = GET_BYTE(to_push, 10U) | GET_BYTE(to_push, 11U) << 8;
-    //  uint32_t rr = GET_BYTE(to_push, 14U) | GET_BYTE(to_push, 15U) << 8;
-    //  uint32_t rl = GET_BYTE(to_push, 12U) | GET_BYTE(to_push, 13U) << 8;
-    //  uint32_t fl = GET_BYTE(to_push, 8U) | GET_BYTE(to_push, 9U) << 8;
+    if (addr == MSG_MEB_ESP_01) {
+      uint32_t fr = GET_BYTE(to_push, 10U) | GET_BYTE(to_push, 11U) << 8;
+      uint32_t rr = GET_BYTE(to_push, 14U) | GET_BYTE(to_push, 15U) << 8;
+      uint32_t rl = GET_BYTE(to_push, 12U) | GET_BYTE(to_push, 13U) << 8;
+      uint32_t fl = GET_BYTE(to_push, 8U) | GET_BYTE(to_push, 9U) << 8;
 
-    //  vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
+      vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
 
     //  UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 0.0075 / 3.6);
-    //}
+    }
 
     // Update vehicle yaw rate for curvature checks
     //if (addr == MSG_MEB_ESP_04) {
