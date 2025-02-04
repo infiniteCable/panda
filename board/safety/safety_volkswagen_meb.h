@@ -125,16 +125,16 @@ static safety_config volkswagen_meb_init(uint16_t param) {
 
 // lateral limits for curvature
 static const SteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+  // PROBLEM GENERAL HERE IS A CORRECT CONVERSION ANGLE_DEG_TO_CAN WITHOUT ROUNDING PROBLEMS -> false blocks
   // FOLLOWING WERE USED WHEN CALCULATING CURVATURE FROM YAW RATE AND SPEED
-  // PROBLEM HERE IS A CORRECT CONVERSION ANGLE_DEG_TO_CAN WITHOUT ROUNDING PROBLEMS -> false blocks, adapt this further
   //.max_steer = 29105, // ~ 0.195 rad/m
   //.angle_deg_to_can = 149253.7313, // ~ 1 / 0.00036 rad/m to can
-  // WE HAVE FOUND A SIGNAL THAT REPRESENTS THE ACTUAL CURVATURE IN MSG_MEB_EPS_01 -> TESTING
-  .max_steer = 0.195, // 0.195 rad/m
-  .angle_deg_to_can = 1, // 1 / 1 rad/m to can
+  // WE HAVE FOUND A SIGNAL THAT REPRESENTS THE ACTUAL CURVATURE IN MEB_EPS_01 -> TESTING
+  .max_steer = 29105, // 0.195 rad/m
+  .angle_deg_to_can = 149253, // 1 / 6.7e-6 rad/m to can
   .angle_rate_up_lookup = {
     {5., 25., 25.},
-    {0.0015, 0.00015, 0.00015} // in rad
+    {0.0015, 0.00015, 0.00015} // in rad/m
   },
   .angle_rate_down_lookup = {
     {5., 25., 25.},
@@ -173,15 +173,15 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
     //  update_sample(&angle_meas, ROUND(current_curvature * VOLKSWAGEN_MEB_STEERING_LIMITS.angle_deg_to_can));
     //}
 
-    if (addr == MSG_MEB_EPS_01) {
-      int current_curvature = (GET_BYTE(to_push, 5U) & 0x7F) << 8 | GET_BYTE(to_push, 4U);
+    if (addr == MSG_MEB_EPS_01) { // we do not need conversion deg to can, same scaling as HCA_03 curvature
+      int current_curvature = ((GET_BYTE(to_push, 5U) & 0x7F) << 8 | GET_BYTE(to_push, 4U));
       
       bool current_curvature_sign = GET_BIT(to_push, 55U);
       if (current_curvature_sign) {
         current_curvature *= -1;
       }
 
-      update_sample(&angle_meas, ROUND(current_curvature * VOLKSWAGEN_MEB_STEERING_LIMITS.angle_deg_to_can));
+      update_sample(&angle_meas, current_curvature);
     }
 
     // Update cruise state
