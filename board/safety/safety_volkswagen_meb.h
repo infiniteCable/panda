@@ -125,20 +125,16 @@ static safety_config volkswagen_meb_init(uint16_t param) {
 
 // lateral limits for curvature
 static const SteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  // PROBLEM GENERAL HERE IS A CORRECT CONVERSION ANGLE_DEG_TO_CAN WITHOUT ROUNDING PROBLEMS -> false blocks
-  // FOLLOWING WERE USED WHEN CALCULATING CURVATURE FROM YAW RATE AND SPEED
-  //.max_steer = 29105, // ~ 0.195 rad/m
-  //.angle_deg_to_can = 149253.7313, // ~ 1 / 0.00036 rad/m to can
-  // WE HAVE FOUND A SIGNAL THAT REPRESENTS THE ACTUAL CURVATURE IN MEB_EPS_01 -> TESTING
+  // keep in mind, we do have a false tx block problem
   .max_steer = 29105, // 0.195 rad/m
-  .angle_deg_to_can = 149253, // 1 / 6.7e-6 rad/m to can
+  .angle_deg_to_can = 149253.7313, // 1 / 6.7e-6 rad/m to can
   .angle_rate_up_lookup = {
     {5., 25., 25.},
-    {0.0015, 0.00015, 0.00015} // in rad/m
+    {0.003, 0.0003, 0.0003} //{0.0015, 0.00015, 0.00015} // in rad/m
   },
   .angle_rate_down_lookup = {
     {5., 25., 25.},
-    {0.002, 0.00035, 0.00035}
+    {0.004, 0.0007, 0.0007} //{0.002, 0.00035, 0.00035}
   },
   .inactive_angle_is_zero = true,
 };
