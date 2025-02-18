@@ -16,7 +16,7 @@
 #define MSG_MOTOR_14         0x3BE   // RX from ECU, for brake switch status
 #define MSG_LDW_02           0x397   // TX by OP, Lane line recognition and text alerts
 #define MSG_Motor_51         0x10B   // RX for TSK state
-#define MSG_TA_01_01         0x26B   // TX for Travel Assist status
+#define MSG_TA_01            0x26B   // TX for Travel Assist status
 
 static uint8_t volkswagen_crc8_lut_8h2f[256]; // Static lookup table for CRC8 poly 0x2F, aka 8H2F/AUTOSAR
 static int volkswagen_steer_power_prev = 0;
@@ -94,7 +94,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
                                                        {MSG_GRA_ACC_01, 2, 8}, {MSG_LDW_02, 0, 8}, {MSG_LH_EPS_03, 2, 8}};
   
   static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {{MSG_MEB_ACC_01, 0, 48}, {MSG_ACC_18, 0, 32}, {MSG_HCA_03, 0, 24},
-                                                       {MSG_LDW_02, 0, 8}, {MSG_LH_EPS_03, 2, 8}, {MSG_TA_01_01, 0, 8}};
+                                                       {MSG_LDW_02, 0, 8}, {MSG_LH_EPS_03, 2, 8}, {MSG_TA_01, 0, 8}};
 
   static RxCheck volkswagen_meb_rx_checks[] = {
     {.msg = {{MSG_LH_EPS_03, 0, 8, .check_checksum = true, .max_counter = 15U, .frequency = 100U}, { 0 }, { 0 }}},
@@ -316,7 +316,7 @@ static int volkswagen_meb_fwd_hook(int bus_num, int addr) {
       if ((addr == MSG_HCA_03) || (addr == MSG_LDW_02)) {
         // openpilot takes over LKAS steering control and related HUD messages from the camera
         bus_fwd = -1;
-      } else if (volkswagen_longitudinal && ((addr == MSG_MEB_ACC_01) || (addr == MSG_ACC_18) || (addr == MSG_TA_01_01))) {
+      } else if (volkswagen_longitudinal && ((addr == MSG_MEB_ACC_01) || (addr == MSG_ACC_18) || (addr == MSG_TA_01))) {
         // openpilot takes over acceleration/braking control and related HUD messages from the stock ACC radar
         bus_fwd = -1;
       } else {
